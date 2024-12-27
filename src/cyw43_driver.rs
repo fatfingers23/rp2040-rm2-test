@@ -1,11 +1,11 @@
 use cyw43::Control;
 use cyw43_pio::PioSpi;
-use defmt::unwrap;
+use defmt::{info, unwrap};
 use embassy_executor::Spawner;
 use embassy_net_wiznet::Device;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIO0};
+use embassy_rp::peripherals::{DMA_CH0, PIN_2, PIN_3, PIN_4, PIN_5, PIO0};
 use embassy_rp::peripherals::{PIN_23, PIN_24, PIN_25, PIN_29};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use static_cell::StaticCell;
@@ -23,10 +23,10 @@ async fn cyw43_task(
 
 pub async fn setup_cyw43<'a>(
     pio0: PIO0,
-    p_23: PIN_23,
-    p_24: PIN_24,
-    p_25: PIN_25,
-    p_29: PIN_29,
+    wl_on: PIN_2,
+    data_out_in: PIN_4,
+    cs: PIN_3,
+    wl_clk: PIN_5,
     dma_ch0: DMA_CH0,
     spawner: Spawner,
 ) -> (Device<'a>, Control<'a>) {
@@ -44,14 +44,24 @@ pub async fn setup_cyw43<'a>(
     //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
     //let btfw = unsafe { core::slice::from_raw_parts(0x10141400 as *const u8, 6164) };
 
-    let pwr = Output::new(p_23, Level::Low);
-    let cs = Output::new(p_25, Level::High);
+    let pwr = Output::new(wl_on, Level::Low);
+    let cs = Output::new(cs, Level::High);
     let mut pio = Pio::new(pio0, Irqs);
-    let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p_24, p_29, dma_ch0);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        pio.irq0,
+        cs,
+        data_out_in,
+        wl_clk,
+        dma_ch0,
+    );
 
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
+    info!("Starting CYW43");
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    info!("CYW43 started");
     //Un comment the below new_with_bluetooth line for bluetooth
     // let (net_device, _bt_device, mut control, runner) =
     //     cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
